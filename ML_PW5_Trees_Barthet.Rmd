@@ -1,0 +1,361 @@
+---
+title: "Machine_Learning_PW5_Trees_Barthet"
+author: "Juliette Barthet"
+date: "20 octobre 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Regression Trees
+### Single Tree
+####1
+To demonstrate regression trees, we will use the Boston dataset that we used during the first two practical works, from the MASS package. Medv is the response.
+
+```{r dataset}
+library(MASS)
+library(caTools)
+set.seed(18)
+Boston_idx = sample(1:nrow(Boston), nrow(Boston) / 2) 
+
+Boston_train = Boston[Boston_idx,]
+Boston_test  = Boston[-Boston_idx,]
+```
+
+####2
+Fit a regression tree to the training data using the rpart() function from the rpart package. Name the tree Boston_tree.
+
+```{r rpart}
+require(rpart)
+Boston_tree<-rpart(medv~.,data=Boston_train)
+```
+
+####3
+Here is the obtained tree.
+
+```{r treeplot}
+plot(Boston_tree)
+text(Boston_tree, pretty = 0)
+title(main = "Regression Tree")
+```
+
+####4
+Same tree but different plotting functions.
+
+```{r newplot}
+require(rpart.plot)
+rpart.plot(Boston_tree)
+```
+
+```{r newplot2}
+prp(Boston_tree)
+```
+
+####5
+Print the obtained tree and print its summary.
+
+```{r}
+str(Boston_tree)
+summary(Boston_tree)
+```
+
+Printing the CP table.
+```{r}
+printcp(Boston_tree)
+```
+Plotting a comparison figure.
+```{r}
+plotcp(Boston_tree)
+```
+Getting the tree not pruned.
+```{r}
+test<-rpart(medv~., data=Boston_train, control=rpart.control(cp=-1))
+rpart.plot(test)
+```
+
+
+Next we will compare this regression tree to a linear model and will use RMSE as our metric. RMSE is the Root Mean Square Error, which is the square root of the MSE.
+
+####5 bis
+Writing a  function that returns the RMSE of two vectors.
+```{r rmse fct}
+RMSE = function(actual, predicted){
+  sqrt(mean((actual[,1] - predicted[,1])^2))
+}
+```
+
+
+####6
+Predicting the response of the test set and calculating RMSE.
+```{r}
+my_prediction=predict(Boston_tree,newdata=Boston_test)
+df_pred=as.data.frame((my_prediction), col.names= c('medv')) #making the prediction a dataframe
+my_rmse<-RMSE(Boston_test['medv'],df_pred['(my_prediction)'])
+my_rmse
+
+```
+
+####7
+Fitting a linear regression model on the training set.
+
+Predicting the response on the test set using the linear model. 
+We compute the simplest linear model with all the variables regardless of PW2.
+
+```{r}
+lin_model = lm(medv ~ ., data = Boston_train)
+y_hat=predict(lin_model,Boston_test)
+
+```
+
+Calculating the RMSE and compare the performance of the tree and the linear regression model.
+
+```{r}
+df_y_hat=as.data.frame((y_hat), col.names= c('medv')) #making the prediction a dataframe
+str(df_y_hat)
+rmse_lin=RMSE(Boston_test,df_y_hat)
+rmse_lin
+
+```
+As we can see, the linear model is much more accurate for this dataset than the tree.
+
+Let's plot the predicted vs. actual values for both models.
+```{r}
+plot(df_pred[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Single Tree, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+
+```
+
+```{r}
+plot(df_y_hat[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Linear Model, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+
+```
+
+Here the most obvious linear regression beats the tree.
+
+### Bagging
+Bagging, or Bootstrap aggregation, is a general-purpose procedure for reducing the variance of a statistical learning method, it is particularly useful and frequently used in the context of decision trees. The idea is to take many training sets from the population, build a separate prediction model using each training set, and average the resulting predictions. Generally we do not have access to multiple training sets. Instead, we can bootstrap, by taking repeated samples from the (single) training data set.
+
+To apply bagging to regression trees, we simply construct B regression trees using B bootstrapped training sets, and average the resulting predictions. These trees are grown deep, and are not pruned. Hence each individual tree has high variance, but low bias. Averaging these B trees reduces the variance.
+  
+#### 8
+
+Let's fit a bagged model.
+
+```{r}
+require(randomForest)
+rf_boston=randomForest(medv~.,data=Boston_train)
+rf_boston
+```
+
+#### 9
+Predicting the response on the test set using the bagging model. Then we calculate the RMSE. 
+```{r}
+rf_pred=predict(rf_boston,Boston_test)
+df_rf_pred=as.data.frame((rf_pred), col.names= c('medv')) #making the prediction a dataframe
+rmse_rf=RMSE(Boston_test,df_rf_pred)
+rmse_rf
+```
+The prediction of the random forest is much better than the single tree and is similar to the linear model.
+```{r}
+plot(rf_boston, main="Bagged trees: Error according to nb of trees", col='red')
+```
+
+### Random Forests
+We will fit a random forest. For regression, on suggestion is to use mtry equal to p/3.
+ 
+#### 10
+Fit a random forest on the training set and compare its performance with the previous models by calculating the predictions and the RMSE.
+Here we have p = 13 predictors.
+
+```{r}
+rf_fit=randomForest(medv~.,data=Boston_train,mtry=13/3)
+rf_fit
+```
+
+```{r}
+rf_fit_pred=predict(rf_fit,Boston_test)
+df_rf_fit_pred=as.data.frame((rf_fit_pred), col.names= c('medv')) #making the prediction a dataframe
+rmse_rf_fit=RMSE(Boston_test,df_rf_fit_pred)
+rmse_rf_fit
+```
+
+#### 11
+Getting the most important predictors.
+
+```{r}
+importance(rf_fit)
+```
+
+#### 12
+```{r}
+varImpPlot(rf_fit, main="Importance of predictors")
+```
+
+According to the importance function, lstat, rm and indus are the three most important predictors of medv. The two first correspond to whta we found in session two but the third most important predictor was ptratio in session two. However, the importance of ptratio was very close to the importance of indus.
+
+
+### Boosting
+#### 10 
+```{r}
+library(gbm)
+Boston_boost = gbm(medv ~ ., data = Boston_train, distribution = "gaussian", 
+                    n.trees = 5000, interaction.depth = 4, shrinkage = 0.01)
+boost_pred=predict(Boston_boost,Boston_test)
+df_boost_pred=as.data.frame((boost_pred), col.names= c('medv')) #making the prediction a dataframe
+rmse_boost=RMSE(Boston_test,df_boost_pred)
+rmse_boost
+rmse_boost-rmse_rf_fit
+```
+
+The RMSE of the boosted model is slightly higher than the fitted model.
+
+#### 11
+Here is a summary of the boosted model and the variable importance.
+We can see that the three most important variables are lstat, rm and dis.
+```{r}
+summary(Boston_boost)
+```
+
+### Comparison
+#### 12 
+Let's plot the predicted vs. actual values for all models.
+```{r}
+plot(df_pred[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Single Tree, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+
+plot(df_rf_pred[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Bagging model, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+
+plot(df_rf_fit_pred[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Fitted model, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+
+plot(df_boost_pred[,1],Boston_test$medv,
+      xlab="Predicted",ylab="Actual", main="Predicted vs. Actual, Boosting Model, Test data",
+     col='red')
+
+abline(0,1,col='blue')
+```
+
+As we can see, the boosted model is more accurate than the others.
+
+## Classification trees
+To construct classification trees, we will use the spam dataset.
+```{r}
+set.seed(18)
+spam=read.csv("spam.csv")
+str(spam) # to show the structure of the dataset. 
+summary(spam) # will show some statistics of every column.
+```
+
+### Logistic regression
+
+```{r}
+# make sure response variable is binary
+spam$spam <- ifelse(spam$spam == "TRUE", 1, 0)
+str(spam)
+# make sure categorical variables are factors
+spam$spam = as.factor(spam$spam)
+str(spam)
+```
+
+```{r}
+#splitting the dataset into a train and a test set
+Spam_idx = sample(1:nrow(spam), nrow(spam) / 2) 
+
+Spam_train = spam[Spam_idx,]
+Spam_test  = spam[-Spam_idx,]
+``` 
+
+Once our subsets are created, we fit a logistic regression.
+
+```{r}
+logreg <- glm(spam ~ ., data = Spam_train, family = "binomial")
+summary(logreg)
+```
+
+Now let's predict our data.
+
+```{r}
+pred_logreg <- predict(logreg, Spam_test) 
+df_logreg=as.data.frame((pred_logreg))
+```
+
+Let's write a function to evaluate the performance of our model.
+myPerf function will give the accuracy of a model by calculating the proportion of well predicted values.
+```{r}
+myPerf=function(actual,predicted){
+  confusionMat = table(actual[,1], predicted[,1])
+  TP = confusionMat[1,1]
+  FP = confusionMat[1,2]
+  FN = confusionMat[2,1]
+  TN = confusionMat[2,2]
+  
+  accuracy = (TP+TN)/(TP+TN+FP+FN)
+  print(accuracy)
+
+}
+
+```
+
+```{r}
+perf_logreg=myPerf(Spam_test,df_logreg)
+```
+
+We will now do the same thing for with a single classification tree.
+
+```{r}
+Spam_tree<-rpart(spam~.,data=Spam_train)
+Spam_tree_pred=predict(Spam_tree,newdata=Spam_test)
+df_spam_tree=as.data.frame(Spam_tree_pred) #making the prediction a dataframe
+perf_single_tree=myPerf(Spam_test,df_spam_tree)
+```
+
+Now with bagging.
+
+```{r}
+Spam_bag=randomForest(spam~.,data=Spam_train)
+Spam_bagged_pred=predict(Spam_bag,newdata=Spam_test)
+df_spam_bag=as.data.frame(Spam_bagged_pred) #making the prediction a dataframe
+perf_bagging=myPerf(Spam_test,df_spam_bag)
+```
+
+Now with random forests. We have p = 57 predictors so we will choose mtry = sqrt(57).
+
+```{r}
+Spam_rf=randomForest(spam~.,data=Spam_train, mtry=sqrt(57))
+Spam_rf_pred=predict(Spam_rf,newdata=Spam_test)
+df_spam_rf=as.data.frame(Spam_rf_pred) #making the prediction a dataframe
+perf_rf=myPerf(Spam_test,df_spam_rf)
+```
+
+Now let's try with boosting.
+
+```{r}
+Spam_boost=gbm(spam~.,data=Spam_train, distribution="laplace",  
+                    n.trees = 500, shrinkage = 0.01)
+print(Spam_boost)
+Spam_boost_pred=predict(Spam_boost,newdata=Spam_test, type="response")
+df_spam_boost=as.data.frame(Spam_boost_pred) #making the prediction a dataframe
+
+perf_boost=myPerf(Spam_test,df_spam_boost)
+```
+
+As we can see, the most performant model are the Bagging and Random Forest with 95 % of accuracy. The Boosting model with laplace distibution is close with around 91 % of accuracy but the other models did well with respectively 75 % and 87 %  for Logistic Regression and Single Tree.

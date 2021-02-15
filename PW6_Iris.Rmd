@@ -1,0 +1,284 @@
+---
+title: "PW6"
+author: "Juliette Barthet"
+date: "5 novembre 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The Iris Dataset
+### Loading the Data
+First we import the Iris dataset.
+
+```{r}
+iris_data=as.data.frame(read.table(file = "iris.data", header = TRUE,sep=","))
+summary(iris_data)
+```
+### Loading the Data
+Let's compare the means and the quartiles of the 3 different flower classes for the 4 different features.
+```{r}
+require(ggplot2)
+require(gridExtra)
+
+box_length<-ggplot(iris_data, aes(x = class, y = sepal_length))+  geom_boxplot()
+box_width<-ggplot(iris_data, aes(x = class, y = sepal_width))+  geom_boxplot()
+box_pwidth<-ggplot(iris_data, aes(x = class, y = petal_width))+  geom_boxplot()
+box_plength<-ggplot(iris_data, aes(x = class, y = petal_length))+  geom_boxplot()
+grid.arrange(box_length, box_width, box_plength, box_pwidth, nrow=2, ncol=2)
+
+```
+These boxplots indicate that the features for the setosa iris are globally very different from the two other classes even if it has some outliers. Overall, we can say that the median values for the three classes are very distinct and that the values are well distibuted around these median values.
+We can however notice that versicolor and virginica iris's features are close (since their median values and boxplots are almostat the same height).
+
+
+Now we will explore how the 3 different flower classes are distributed along the 4 different features.
+```{r}
+
+# histogram of sepal_length
+ggplot(iris_data, aes(x=sepal_length, fill=class)) +
+  geom_histogram(binwidth=.2, alpha=.5)
+# histogram of sepal_width
+ggplot(iris_data, aes(x=sepal_width, fill=class)) +
+  geom_histogram(binwidth=.2, alpha=.5)
+# histogram of petal_length
+ggplot(iris_data, aes(x=petal_length, fill=class)) +
+  geom_histogram(binwidth=.2, alpha=.5)
+# histogram of petal_width
+ggplot(iris_data, aes(x=petal_width, fill=class)) +
+  geom_histogram(binwidth=.2, alpha=.5)
+
+```
+From the histograms, we can say that when it comes to petal length and width, the setosa is easily distinguishable from the virginica and the versicolor. Also, the petal features of virginica and setosa seem to be close. The second histogram shows that the irises' sepal width is not a good indicator to classify them as they are around the same values for all of the classes.
+In the first histogram, the three classes blend together so it would be challenging to classify the irises only according to this feature even if globally we can see that the sepals of the virginica are longer than the ones of versicolor which are also longer than setosa.
+Overall, we could classify the iris according to their features from lowest values to highest in this way: setosa, versicolor, virginica. Again, is not true for the sepal width where all of the classes blend together.
+
+### PCA Using princomp()
+
+Let's apply a PCA on the Iris dataset.
+
+```{r}
+pcairis=princomp(iris_data[,-5], cor=T) 
+#we take only the numerical columns to apply PCA.
+# now pcairis is a R object of type princomp
+
+str(pcairis)
+
+summary(pcairis) 
+plot(pcairis) 
+```
+Looking at the summary of the principal components analysis, we can say that the standard deviation is the higher for features 1 and 2 (sepal length and width) which means that the values are greatly spread out around the means of these features.
+Also, feature 1 (sepal length) stands for 73 % of the total variance of our system.
+
+```{r}
+biplot(pcairis) 
+```
+
+### Deeper PCA using factoextra package
+
+
+
+```{r}
+require(factoextra)
+require(FactoMineR)
+
+res.pca<-PCA(iris_data[,-5], graph=FALSE)
+print(res.pca)
+```
+```{r}
+acp<-princomp(iris_data[,-5], cor=TRUE)
+
+print(acp$loadings)
+```
+First, let's plot a scree plot.
+
+```{r}
+fviz_eig(res.pca, addlabels = TRUE)
+
+```
+Looking at the scree plot, we can see that 95.8 % of the variances / information of the data are well represented by the first two principal components.
+
+Now, let's plot a graph of individuals.
+
+
+```{r}
+fviz_pca_ind(res.pca,
+             col.ind = "contrib", # Color by their contribution to axes
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     
+             )
+```
+
+```{r}
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # Montre les points seulement (mais pas le "text")
+             col.ind = iris_data$class, # colorer by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE, # Ellipses de concentration
+             legend.title = "Groups"
+             )
+```
+On the individuals plot, similar individuals are grouped as we can see on the second plot. We can say that the setosas are well represented as they are far from the origin but still close to the axis. The versicolor are not so well represented.
+
+Now we plot a graph of variables.
+```{r}
+fviz_pca_var(res.pca,
+             col.ind = "contrib", # Color by their contribution to axes
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     
+             )
+```
+This graph shows that petal width and length contribute the most to the the first dimension sepal length also has an impact on this axis. The sepal width is almost the only contributor of the second dimension.
+
+Here is the biplot:
+
+```{r}
+fviz_pca_biplot(res.pca, 
+                # Individus
+                geom.ind = "point",
+                fill.ind = iris$Species, col.ind = "black",
+                pointshape = 21, pointsize = 2,
+                palette = "jco",
+                addEllipses = TRUE,
+                # Variables
+                alpha.var ="contrib", col.var = "contrib",
+                gradient.cols = "RdYlBu",
+                
+                legend.title = list(fill = "Species", color = "Contrib",
+                                    alpha = "Contrib")
+                )
+```
+We can say that setosas globally have a high value for the sepal width but a lower value for the three other features contrary to vericolors and virginicas.
+
+Plotting the contribution of variables to PC1:
+```{r}
+fviz_contrib(res.pca, choice = "var", axes = 1)
+```
+This plot confirms that petal length, width and sepal length contribute the most to PC1.
+
+Same for PC2:
+```{r}
+fviz_contrib(res.pca, choice = "var", axes = 2)
+```
+This plot confirms that sepal width is basically the only contributor to PC2.
+
+### Step by step PCA
+
+First we split the iris dataset into data and class labels.
+
+```{r}
+X <- iris[,-5]
+y <- iris[,5]
+```
+
+#### Standardizing
+
+We scale the 4 features and store the scaled matrix into a new one.
+
+```{r}
+require(dplyr)
+X_scaled <- X %>% mutate_all(~(scale(.) %>% as.vector))
+X_scaled
+
+```
+#### Covariance Matrix
+Let's compute the Covariance Matrix of the scaled features.
+
+```{r}
+cov_mat=cov(X_scaled)
+cov_mat
+
+```
+Computing the Eigenvectors and the Eigenvalues.
+
+```{r}
+eigen(cov_mat)
+```
+#### Correlation Matrix
+First we use the scaled data.
+```{r}
+cor_mat=cor(X_scaled)
+cor_mat
+
+```
+Computing the Eigenvectors and the Eigenvalues.
+
+```{r}
+eigen(cor_mat)
+```
+Now we use the unscaled data.
+```{r}
+cor_matX=cor(X)
+cor_matX
+
+```
+Computing the Eigenvectors and the Eigenvalues.
+
+```{r}
+s.eigen<-eigen(cor_matX)
+s.eigen
+```
+We end up with the same results for those three methods. We could therefore use the correlation matrix on unscaled data so that we do not need to add the standardization step.
+
+#### Selecting principal components
+
+They are classed by decreasing order by default by the eigen() function.
+
+#### Explained variance
+
+We calculate the individual explained variation of each principal component.
+
+```{r}
+for (s in s.eigen$values) {
+  print(s / sum(s.eigen$values))
+}
+
+```
+Here is the cumulative explained variation of each principal component:
+
+```{r}
+cumul=0
+for (s in s.eigen$values) {
+  cumul=cumul+s / sum(s.eigen$values)
+  print(cumul)
+}
+
+```
+The first two principal components explain almost 96 % of variation.
+
+We plot the individual explained variation:
+```{r}
+plot(s.eigen$values, xlab = 'Eigenvalue Number', ylab = 'Eigenvalue Size', main = 'Scree Plot')
+lines(s.eigen$values)
+```
+
+#### Projection matrix
+
+Here we created the projection matrix that will be used to transform the Iris data onto the new feature subspace.
+
+```{r}
+A<-s.eigen$vectors[,1:2]
+A # matrix of loadings
+```
+
+#### Projection onto the new features space
+
+Let's compute Y, the matrix of scores where Y=XA.
+
+```{r}
+Y<-as.matrix(X)%*%A
+Y # matrix of scores
+```
+
+#### Visualization
+
+Let's plot the observations on the new feature space and color the flowers with respect to their classes.
+
+```{r}
+plot(Y[,1],Y[,2],xlab="PC1", ylab="PC2", main="Observations on the new feature space", col = y)
+legend("topright", inset=.02, title="Type of flower", legend=c("Setosa","Versicolor","Virginica"),
+   fill=c("black", "red", "green"), cex=0.8)
+
+```

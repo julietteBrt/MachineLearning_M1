@@ -1,0 +1,379 @@
+---
+title: "Hackathon"
+subtitle: "Spotify Dataset"
+author: "Juliette Barthet and Enora Bertone"
+date: "`r format(Sys.time())`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: cerulean
+    highlight: espresso
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The Dataset
+The Spotify is constituted of 1817 observations and 16 variables. Each observation is a song and its different features such as the duration, the tempo, the danceability... The idea is to predict whether the user will like a song (1) or not (0). Therefore, we have 13 features and three columns that describe the song (target, song_title and artist).
+
+
+```{r}
+#Loading the data
+data <- read.csv("data.csv", sep=",")
+test <- read.csv("test.csv", sep=",")
+summary(data)
+str(data)
+```
+
+This will be a classification problem so let's put our target as a factor.
+
+```{r}
+#data$target = as.factor(data$target)
+#str(data)
+```
+
+
+## Data Analysis
+
+```{r}
+#Checking missing values
+colSums(is.na(data))
+```
+
+We can see that we don't have any missing value so we can proceed to our predictions.
+
+```{r}
+require(caTools)
+set.seed(123)
+
+# Splitting training data into two groups to avoid overfitting
+split = sample.split(data$target, SplitRatio = 0.75)
+training_set = subset(data, split == TRUE)
+test_set = subset(data, split == FALSE)
+
+```
+
+## Predicting outcomes
+
+As this is a classification problem, we decided to compare the different methods we know:
+- Logistic regression
+- Decision Tree
+- Random Forests
+
+```{r}
+require(dplyr)
+require(factoextra)
+require(FactoMineR)
+require(caTools)
+require(MASS)
+
+```
+
+### PCA
+
+We decided to implement a PCA to see if some features were highly influencing our data.
+
+```{r}
+data_num <- subset(data, select=-c(song_title, artist))
+pca = princomp(data_num[,-14], cor = T)
+```
+
+```{r}
+summary(pca)
+plot(pca)
+```
+
+In the summary we can see that the standard deviation scores have little differences.
+We can confirm it in the plot, the percentage of explained variances are pretty low and very dispersed.
+
+```{r}
+res.pca <- PCA(data_num[,-14], graph=FALSE)
+res.pca
+fviz_eig(res.pca, addlabels = TRUE)
+```
+
+We need 4 features just to reach 50% (exactly 52.4%).
+Therefore it would be not relevant to use the simple logistic regression model, but we can try using multiple logistic regression model.
+
+```{r}
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # Montre les points seulement (mais pas le "text")
+             col.ind = as.factor(data_num$target), # colorer by groups
+             palette = c("#00AFBB", "#E7B800"),
+             addEllipses = TRUE, # Ellipses de concentration
+             legend.title = "Groups"
+)
+```
+As the data is labeled, we won't try to implement kmeans and clustering model. This plot is another proof that we can't use these models.
+
+### Multiple logistic regression
+
+```{r}
+mLinReg <- glm(target~., 
+                    data = training_set[1:14],
+                    family = binomial(link="logit")
+)
+
+summary(mLinReg)
+```
+
+This model of prediction has a AIC score of 1707.3 which is the best we can find with multiple linear regression.
+
+```{r}
+predicted_values = predict(mLinReg, newdata=test_set, type="response")
+predicted_values = ifelse(predicted_values>0.5, 1,0)
+
+confusion_matrix <- table(test_set$target, unlist(predicted_values, use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+
+First, we have try to use only the 4 first features, but the AIC score was 1797.1 which is greater than 1707.3.
+Then, we have realised that we have to use all the features to have the best solution.
+
+Code for the first submission with a score of 0.60.
+
+```{r}
+pred_val= predict(mLinReg, newdata=test, type="response")
+pred_val = ifelse(pred_val>0.5, 1,0)
+to_be_submitted = data.frame(id=as.character(rownames(test)), target=as.character(pred_val))
+write.csv(to_be_submitted , file = "to_be_submitted.csv", row.names = FALSE)
+```
+
+The score was low and we could'nt find a better answer with a multiple logistic regression model.
+We have decided to look after the linear discriminant analysis model.
+
+### Discrimant Analysis
+Let's do some anova test to compare p-values.
+
+```{r}
+summary(aov(acousticness~target, data = training_set))
+summary(aov(danceability~target, data = training_set))
+summary(aov(duration_ms~target, data = training_set))
+summary(aov(energy~target, data = training_set))
+summary(aov(instrumentalness~target, data = training_set))
+summary(aov(key~target, data = training_set))
+summary(aov(liveness~target, data = training_set))
+summary(aov(loudness~target, data = training_set))
+summary(aov(mode~target, data = training_set))
+summary(aov(speechiness~target, data = training_set))
+summary(aov(tempo~target, data = training_set))
+summary(aov(time_signature~target, data = training_set))
+summary(aov(valence~target, data = training_set))
+```
+Result: Most important features are : acousticness, danceability, duration_ms, instrumentalness, speachiness and valence.
+
+```{r}
+classifier.lda = lda(target~acousticness + 
+                       danceability + 
+                       duration_ms + 
+                       instrumentalness + 
+                       speechiness + 
+                       valence, 
+                     data = training_set)
+classifier.lda
+
+pred.lda = predict(classifier.lda, newdata = training_set, type="response")
+confusion_matrix.lda <- table(training_set$target, pred.lda$class)
+confusion_matrix.lda
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+
+We tried a lda model just with this 6 features which give us an accurancy of 67 %.
+Then we have try to add more features by order of importance due to their p-values : loudness, time_signatures, mode.
+But when we add loudness or mode the accuracy decreased.
+When we add time_signature the accuracy is the same so it's not necessary.
+The four last features (energy, key, liveness and tempo) were not relevant due to a p-value above 0.05.
+
+Code for the second submission with a score of 0.635:
+
+```{r}
+pred_val2 = predict(classifier.lda, newdata=test, type="response")
+to_be_submitted2 = data.frame(id=as.character(rownames(test)), target=as.character(pred_val2$class))
+write.csv(to_be_submitted2 , file = "to_be_submitted.csv", row.names = FALSE)
+```
+
+
+### Predicting with a Single Tree 
+
+```{r }
+require(rpart)
+data_sgl_tree<-rpart(target~ .,data=training_set)
+```
+
+```{r}
+plot(data_sgl_tree)
+text(data_sgl_tree, pretty = 0)
+title(main = "Regression Tree with every column")
+```
+
+As we can see, it is not very insightful. Let's get rid of the song title and the artist since they are just describing the song. Even if we could argue that when a listener likes an artist, it is likely that he will like multiple songs of his.
+
+```{r }
+require(rpart)
+train2 = training_set[1:14]
+data_sgl_tree<-rpart(target~ .,data=train2)
+```
+
+```{r}
+plot(data_sgl_tree)
+text(data_sgl_tree, pretty = 0)
+title(main = "Regression Tree without artists and title")
+```
+
+Now it is much more readable and seems more coherent.
+
+```{r}
+summary(data_sgl_tree)
+```
+Loudness, instrumentalness, energy, speechiness and acousticness are the 5 most important variables.
+```{r}
+printcp(data_sgl_tree)
+```
+
+Interestingly, we can see that acousticness is not considered as a variable actually used in the tree construction.
+
+```{r}
+plotcp(data_sgl_tree)
+```
+
+A height of five seems to be good.
+
+```{r}
+my_prediction=predict(data_sgl_tree,newdata=test_set[1:14])
+my_prediction <-ifelse(my_prediction>0.5, 1,0)
+
+df_pred=as.data.frame(my_prediction) 
+```
+
+```{r}
+confusion_matrix = table(test_set$target, unlist(df_pred[1], use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+
+Here the accuracy is higher than our previous trials: 74.9 %.
+
+### Using Random Forest
+
+```{r}
+require(randomForest)
+rf_train = randomForest(target ~ ., data=train2)
+rf_train
+```
+
+```{r}
+rf_pred = predict(rf_train, test_set[1:14])
+rf_pred <-ifelse(rf_pred>0.5, 1,0)
+
+df_pred=as.data.frame((rf_pred), col.names= c('target')) 
+```
+
+```{r}
+confusion_matrix = table(test_set$target, unlist(df_pred[1], use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+With Random Forest it's even higher since we take multiple samples of data: 78.4 % of accuracy.
+
+### Trying to modify the model
+As we have p = 13 features, we set mtry = sqrt(13).
+```{r}
+rf_fit = randomForest(target~., data=training_set, mtry = sqrt(13))
+
+rf_pred = predict(rf_fit, test_set)
+rf_pred <-ifelse(rf_pred>0.5, 1,0)
+
+df_pred=as.data.frame((rf_pred), col.names= c('target')) 
+```
+
+```{r}
+confusion_matrix = table(test_set$target, unlist(df_pred[1], use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+
+The accuracy is not as good as the previous one.
+
+
+```{r}
+require(gbm)
+
+data_boost = gbm(target ~ ., data=training_set[1:14], distribution="gaussian", n.trees = 1000, interaction.depth = 4, shrinkage = 0.01)
+
+boost_pred = predict(data_boost, test_set)
+```
+
+```{r}
+df_boost_pred=as.data.frame((boost_pred), col.names= c('target'))
+
+confusion_matrix = table(test_set$target, unlist(df_pred[1], use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+
+Same here but we'll try it for our next submission:
+```{r}
+data_boost = gbm(target ~ -song_title -artist, data=training_set, distribution="gaussian", n.trees = 1000, interaction.depth = 4, shrinkage = 0.01)
+
+boost_pred = predict(data_boost, test)
+
+pred_val = ifelse(boost_pred>0.5, 1,0)
+to_be_submitted = data.frame(id=as.character(rownames(test)), target=as.character(pred_val))
+write.csv(to_be_submitted , file = "to_be_submitted.csv", row.names = FALSE)
+
+```
+On Kaggle we obtained around 77 % or accuracy and wanted to try something else.
+
+During the session, we also tried different combinations of features, for example:
+```{r}
+rf_train = randomForest(target ~danceability**2+acousticness+speechiness, data=train2)
+
+rf_pred = predict(rf_train, test_set)
+rf_pred <-ifelse(rf_pred>0.5, 1,0)
+
+df_pred=as.data.frame((rf_pred), col.names= c('target')) 
+```
+
+```{r}
+confusion_matrix = table(test_set$target, unlist(df_pred[1], use.names = FALSE))
+confusion_matrix
+accuracy = (confusion_matrix[1,1] + confusion_matrix[2,2])/(confusion_matrix[1,1] + confusion_matrix[2,1] + confusion_matrix[1,2] + confusion_matrix[2,2])
+accuracy
+```
+But it was never as good as the first random forest.
+
+Thus, we chose to submit Random Forest since it was the highest accuracy we had had and obtained 78.5 % on kaggle.
+Here are the predictions:
+
+```{r}
+rf_train = randomForest(target ~., data=train2)
+rf_train
+```
+
+```{r}
+rf_pred = predict(rf_train, test)
+
+pred_val = ifelse(rf_pred>0.5, 1,0)
+to_be_submitted = data.frame(id=as.character(rownames(test)), target=as.character(pred_val))
+write.csv(to_be_submitted , file = "to_be_submitted.csv", row.names = FALSE)
+
+pred_val
+```
+
+
+
+
+
+
